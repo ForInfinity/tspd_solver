@@ -1,0 +1,14 @@
+
+.env
+
+.idea
+*.iml
+
+.pytest_cache
+
+cache
+
+data*
+logs
+results
+
