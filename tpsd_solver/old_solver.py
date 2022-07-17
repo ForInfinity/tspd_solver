@@ -65,29 +65,7 @@ class OldStep1(Step1TruckRoutes):
             pool.map(filter_route, all_truck_routes)
             pool.close()
             pool.join()
-            # for truck_route in all_truck_routes:
-            #
-            #     # For every possible truck route, filter repeated one
-            #     if truck_route[0] > truck_route[-1]:
-            #         # self.logger.debug(f"filter 1: {(0,) + truck_route}")
-            #         continue
-            #     # else:
-            #     #     self.logger.debug(f"filter 1 else: {(0,) + truck_route}")
-            #
-            #     truck_route = (0,) + truck_route
-            #     truck_route_as_list: list[int] = list(truck_route)
-            #
-            #     # Filter route that has a worse time than tsp time
-            #     if self.distances.calc_road_distance(truck_route_as_list) > tsp_time:
-            #         # self.logger.debug(
-            #         #     f"filter 2: {truck_route} with time {self.distances.calc_road_distance(truck_route_as_list)}")
-            #         continue
-            #
-            #     # if truck_route_as_list == [0, 1, 2]:
-            #     #     self.logger.debug(f"found: {truck_route_as_list}")
-            #
-            #     # Add the route to the list
-            #     sorted_truck_routes.add(truck_route_as_list)
+
         self.logger.info(f"Found {len(sorted_truck_routes)} possible truck routes")
         # Return the sorted list of truck routes, the order indicates the time, from shortest to longest.
         # self.logger.debug(f"sorted_truck_routes: {sorted_truck_routes}")
