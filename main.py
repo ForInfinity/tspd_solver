@@ -155,7 +155,7 @@ def find_all_datasets():
 def main():
     global logger
 
-    tspd_osm.dataset.fetch_data_from_geo_list(os.environ.get('GEO_LIST'))
+    tspd_osm.dataset.fetch_data_from_geo_list(os.environ.get('GET_LIST_FILE_PATH'))
     dataset_paths = list(find_all_datasets())
 
     for p in dataset_paths:
