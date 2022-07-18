@@ -26,6 +26,22 @@ logger: logging.Logger = get_logger()
     >	Distance and Time Matrix: © openrouteservice.org by HeiGIT | Map data © OpenStreetMap contributors'
 """
 
+parser = argparse.ArgumentParser("main.py")
+parser.add_argument('-o', '--old-solver', dest='old_solver', action='store_true', default=False,
+                    help='Run with old solver')
+parser.add_argument('-n', '--new-solver', dest='new_solver', action='store_true', default=False,
+                    help='Run with new solver')
+parser.add_argument('-c', '--cut-factor', dest='cut_factor', type=float, default=1.0, help='Cut factor')
+parser.add_argument('-g', '--geo-list', dest='geo_list', type=str, default=os.environ.get('GET_LIST_FILE_PATH'),
+                    help='Geo list file path')
+parser.add_argument('-k', '--ors-api-key', dest='ors_api_key', type=str,
+                    default=os.environ.get('OPEN_ROUTE_SERVICE_API_KEY'),
+                    help='Open Route Service API key')
+
+args = parser.parse_args()
+
+os.environ['OPEN_ROUTE_SERVICE_API_KEY'] = args.ors_api_key
+
 
 def write_result_to_file(result: list[str], filename: str):
     with open(filename, 'w') as f:
@@ -115,7 +131,7 @@ def run_dataset(filename: str, old_solver=False, cut_factor=1.0):
         logger.info(f"Count: drone_nodes={int(len(drone_routes) / 2)}, truck_routes={len(truck_routes)}")
 
         detailed_path_logs = []
-        sum_time = calc_combined_time_consumption(
+        statistic = calc_combined_route(
             truck_routes=truck_routes,
             drone_routes=drone_routes,
             truck_time_fun=calc_truck_time,
@@ -123,11 +139,16 @@ def run_dataset(filename: str, old_solver=False, cut_factor=1.0):
             logger=logger,
             log_container=detailed_path_logs
         )
+
+        sum_time = statistic.total_travel_time
+
         log_line(f"\n*** Count: Truck Routes={len(truck_routes)}, Drone Routes={int(len(drone_routes) / 2)}")
         log_line(f"*** Total Delivery Time: {parse_secs_to_str(sum_time)} ({sum_time:.2f} seconds)")
+
         # TSP Time
         _, tsp_distance = calc_truck_tsp_route(dataset, debug_output=False)
         upper_bound_time = calc_truck_time(tsp_distance)
+
         log_line(f"*** Truck TSP Time (initial upper bound):  {parse_secs_to_str(upper_bound_time)} "
                  f"({upper_bound_time:.2f} seconds)")
 
@@ -155,14 +176,21 @@ def find_all_datasets():
 def main():
     global logger
 
-    tspd_osm.dataset.fetch_data_from_geo_list(os.environ.get('GET_LIST_FILE_PATH'))
+    tspd_osm.dataset.fetch_data_from_geo_list(args.geo_list)
     dataset_paths = list(find_all_datasets())
 
+    if not args.old_solver and not args.new_solver:
+        logger.warning("No solver selected. All solvers will be run.")
+        args.old_solver = True
+        args.new_solver = True
+
     for p in dataset_paths:
-        logger.info("\n\n\n\n")
+        logger.info("\n\n\n")
         logger.info(f"****** Start processing {p} ******")
-        run_dataset(p, old_solver=True)
-        run_dataset(p, old_solver=False, cut_factor=0.25)
+        if args.old_solver:
+            run_dataset(p, old_solver=True)
+        if args.new_solver:
+            run_dataset(p, old_solver=False, cut_factor=args.cut_factor)
 
 
 if __name__ == "__main__":
