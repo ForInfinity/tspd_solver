@@ -2,7 +2,7 @@ import logging
 
 from tspd_osm.types import MapDataset
 
-from tpsd_solver.routes import calc_combined_time_consumption, RouteNetNode, Vehicle, parse_list_to_route_net_nodes
+from tpsd_solver.routes import calc_combined_route, RouteNetNode, Vehicle, parse_list_to_route_net_nodes
 from tpsd_solver.speed import calc_truck_time, calc_drone_time
 
 logging.basicConfig(level=logging.DEBUG)
@@ -33,8 +33,9 @@ def test_truck_time():
     truck_routes[0].children[Vehicle.TRUCK] = truck_routes[1]
     truck_routes[1].children[Vehicle.TRUCK] = truck_routes[0]
 
-    time = calc_combined_time_consumption(truck_routes, [], lambda x: x, lambda x: x, logger=logger.getChild("truck"))
-    assert time == 25
+    statistic = calc_combined_route(truck_routes, [], lambda x: x, lambda x: x, logger=logger.getChild("truck"))
+
+    assert statistic.total_travel_time == 25
     pass
 
 
@@ -91,8 +92,9 @@ def test_part_combined_time():
     truck_routes[1].children[Vehicle.TRUCK] = truck_routes[2]
     truck_routes[2].children[Vehicle.TRUCK] = truck_routes[0]
 
-    time = calc_combined_time_consumption(truck_routes, drone_routes, lambda x: x, lambda x: x,
-                                          logger=logger.getChild("part"))
+    statistic = calc_combined_route(truck_routes, drone_routes, lambda x: x, lambda x: x,
+                                    logger=logger.getChild("part"))
+    time = statistic.total_travel_time
     print(f"time = {time}")
     assert time == 110.0
 
@@ -172,9 +174,9 @@ def test_full_combined_time():
     drone_routes[2].children[Vehicle.DRONE] = drone_routes[3]  # (1->3) -> (3->2)
     drone_routes[3].children[Vehicle.TRUCK] = truck_routes[2]  # (3->2) -> Truck
 
-    time = calc_combined_time_consumption(truck_routes, drone_routes, lambda x: x, lambda x: x / 2,
-                                          logger=logger.getChild("part"))
-    assert time == 31100.0
+    statistic = calc_combined_route(truck_routes, drone_routes, lambda x: x, lambda x: x / 2,
+                                    logger=logger.getChild("part"))
+    assert statistic.total_travel_time == 31100.0
 
 
 # Not take off at start point
@@ -186,8 +188,8 @@ def test_case_3():
         distances,
     )
 
-    time = calc_combined_time_consumption(truck_routes, drone_routes, calc_truck_time, calc_drone_time,
-                                          logger=logger.getChild("part"))
-    assert time == 3516.0
+    statistic = calc_combined_route(truck_routes, drone_routes, calc_truck_time, calc_drone_time,
+                                    logger=logger.getChild("part"))
+    assert statistic.total_travel_time == 3516.0
 
     pass

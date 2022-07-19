@@ -2,8 +2,9 @@ import logging
 import os
 import re
 import sys
+from typing import Optional
 
-_module_logger: logging.Logger = logging.getLogger('tspd_solver')
+_module_logger: Optional[logging.Logger] = None
 
 
 class TermEscapeCodeFormatter(logging.Formatter):
@@ -17,14 +18,13 @@ class TermEscapeCodeFormatter(logging.Formatter):
         record.msg = re.sub(escape_re, "", str(record.msg))
         return super().format(record)
 
-
 # setup logging
 def setup_logging():
     global _module_logger
     os.makedirs('./logs', exist_ok=True)
     if _module_logger is not None:
         return _module_logger
-    loglevel = 'DEBUG'
+
     # logger
     _module_logger = logging.getLogger('tspd_solver')
     _module_logger.setLevel(logging.DEBUG)
@@ -36,7 +36,7 @@ def setup_logging():
 
     # create console handler
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(getattr(logging, loglevel))
+    console_handler.setLevel(logging.DEBUG)
     console_handler.setFormatter(simple_formatter)
 
     # create file handler
@@ -50,8 +50,7 @@ def setup_logging():
     _module_logger.addHandler(file_handler)
 
 
-setup_logging()
-
-
 def get_logger() -> logging.Logger:
+    if _module_logger is None:
+        setup_logging()
     return _module_logger

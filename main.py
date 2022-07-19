@@ -1,8 +1,11 @@
+import argparse
 import logging
 import os
+from dataclasses import asdict
 from datetime import datetime
 from typing import Optional
 
+import pandas as pd
 import tspd_osm.dataset
 from dotenv import load_dotenv
 from tspd_osm.graph import GraphFactory
@@ -12,7 +15,7 @@ from tpsd_solver.__util.logs import get_logger
 from tpsd_solver.__util.timer import Timer, parse_secs_to_str
 from tpsd_solver.cut_solver import CutSolver
 from tpsd_solver.old_solver import OldSolver
-from tpsd_solver.routes import Node, calc_combined_time_consumption, split_truck_drone_routes, RouteNetNode
+from tpsd_solver.routes import Node, calc_combined_route, split_truck_drone_routes, RouteNetNode
 from tpsd_solver.speed import calc_truck_time, calc_drone_time
 from tpsd_solver.tsp import calc_truck_tsp_route
 
@@ -66,7 +69,7 @@ def save_graph(filename: str, dataset: MapDataset, truck_routes: list[RouteNetNo
     graph.save(filename)
 
 
-def run_dataset(filename: str, old_solver=False, cut_factor=1.0):
+def run_dataset(filename: str, old_solver=False, cut_factor=1.0) -> Optional[dict]:
     global logger
     dataset = MapDataset.from_xlsx(filename)
     nodes = [
@@ -79,7 +82,7 @@ def run_dataset(filename: str, old_solver=False, cut_factor=1.0):
 
     if old_solver and len(nodes) > 11:
         logger.warning('Skipping old solver for dataset with more than 12 nodes!')
-        return
+        return None
     logger.info(f"Running {solver_name} for {dataset_name}")
     basic_name = f"{dataset_name}_{solver_name}_{timestr}"
     os.makedirs(f"./results/", exist_ok=True)
@@ -97,6 +100,7 @@ def run_dataset(filename: str, old_solver=False, cut_factor=1.0):
         log_line('Calculate TSP-D with following nodes:')
         log_lines([f'\t{node.id: >2d}. lat={node.lat}, lon={node.lon} {node.name}' for node in nodes])
 
+        time_usage = {}
         with Timer(logger=logger, name="Calculation") as timer:
             if old_solver:
                 solver = OldSolver(
@@ -120,12 +124,13 @@ def run_dataset(filename: str, old_solver=False, cut_factor=1.0):
             result = solver.calculate()
             timer.record_event_end("Calculate")
             log_lines(timer.get_logs())
+            time_usage = timer.get_time_usage()
 
         truck_routes, drone_routes = split_truck_drone_routes(result)
 
-        print('********************************')
-        logger.warning(f"**final: truck_routes: {truck_routes}")
-        logger.warning(f"**final: drone_routes: {drone_routes}\n")
+        logger.info('********************************')
+        logger.info(f"**final: truck_routes: {truck_routes}")
+        logger.info(f"**final: drone_routes: {drone_routes}\n")
         logger.info(f"\tTruck: {' -> '.join([str(t.start) for t in truck_routes])}")
         logger.info(f"\tDrone: {' -> '.join([str((t.start, t.end)) for t in drone_routes])}\n")
         logger.info(f"Count: drone_nodes={int(len(drone_routes) / 2)}, truck_routes={len(truck_routes)}")
@@ -147,10 +152,10 @@ def run_dataset(filename: str, old_solver=False, cut_factor=1.0):
 
         # TSP Time
         _, tsp_distance = calc_truck_tsp_route(dataset, debug_output=False)
-        upper_bound_time = calc_truck_time(tsp_distance)
+        tsp_time = calc_truck_time(tsp_distance)
 
-        log_line(f"*** Truck TSP Time (initial upper bound):  {parse_secs_to_str(upper_bound_time)} "
-                 f"({upper_bound_time:.2f} seconds)")
+        log_line(f"*** Truck TSP Time (initial upper bound):  {parse_secs_to_str(tsp_time)} "
+                 f"({tsp_time:.2f} seconds)")
 
         log_line("\n\nOptimal routes:")
         log_line(f"\tTruck: {' -> '.join([str(t.start) for t in truck_routes])}")
@@ -164,6 +169,19 @@ def run_dataset(filename: str, old_solver=False, cut_factor=1.0):
                    truck_routes=truck_routes,
                    drone_routes=drone_routes)
 
+        # return a line of data
+        result = {
+            'dataset': dataset_name,
+            'solver': solver_name,
+            'cut_factor': cut_factor,
+            'nodes': len(nodes),
+        }
+        result.update(time_usage)
+        result['truck_tsp_time'] = tsp_time
+        result.update(asdict(statistic))
+
+        return result
+
 
 def find_all_datasets():
     for root, ds, fs in os.walk('./data/'):
@@ -173,24 +191,38 @@ def find_all_datasets():
                 yield fullname
 
 
+def export_statistics(filename: str, statistics: list[dict]):
+    frame = pd.DataFrame(statistics)
+    frame.to_excel(filename, index=False)
+
+
 def main():
     global logger
 
     tspd_osm.dataset.fetch_data_from_geo_list(args.geo_list)
     dataset_paths = list(find_all_datasets())
-
+    start_time = datetime.now()
+    start_time_str = start_time.strftime("%Y%m%d_%H%M%S")
+    statics_filename = f"./results/Summary_{start_time_str}.xlsx"
     if not args.old_solver and not args.new_solver:
         logger.warning("No solver selected. All solvers will be run.")
         args.old_solver = True
         args.new_solver = True
+    records = []
 
     for p in dataset_paths:
         logger.info("\n\n\n")
         logger.info(f"****** Start processing {p} ******")
         if args.old_solver:
-            run_dataset(p, old_solver=True)
+            statistic = run_dataset(p, old_solver=True)
+            if statistic is not None:
+                records.append(statistic)
         if args.new_solver:
-            run_dataset(p, old_solver=False, cut_factor=args.cut_factor)
+            statistic = run_dataset(p, old_solver=False, cut_factor=args.cut_factor)
+            if statistic is not None:
+                records.append(statistic)
+        # Export statistics for each dataset to save data when shutting down or encountering error.
+        export_statistics(statics_filename, records)
 
 
 if __name__ == "__main__":

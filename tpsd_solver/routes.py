@@ -59,11 +59,27 @@ class RouteNetNode(SingleRoute):
         return self.__str__()
 
 
-def calc_combined_time_consumption(truck_routes: list[RouteNetNode], drone_routes: list[RouteNetNode],
-                                   truck_time_fun: Callable[[float], float],
-                                   drone_time_fun: Callable[[float], float],
-                                   logger: logging.Logger = logging.getLogger("stub"),
-                                   log_container: list[str] = None) -> float:
+@dataclass
+class RouteStatistic:
+    """
+    Static Data of a combined route.
+    """
+    route_truck_distance: float = 0.0
+    route_drone_distance: float = 0.0
+    route_truck_travel_time: float = 0.0
+    route_drone_travel_time: float = 0.0
+    route_truck_waiting_time: float = 0.0
+    route_drone_waiting_time: float = 0.0
+    route_truck_node_count: int = 0
+    route_drone_node_count: int = 0
+    total_travel_time: float = 0.0
+
+
+def calc_combined_route(truck_routes: list[RouteNetNode], drone_routes: list[RouteNetNode],
+                        truck_time_fun: Callable[[float], float],
+                        drone_time_fun: Callable[[float], float],
+                        logger: logging.Logger = None,
+                        log_container: list[str] = None) -> RouteStatistic:
     """
     Calculate the time consumption of a route based on drone routes.
     :param log_container:
@@ -78,9 +94,14 @@ def calc_combined_time_consumption(truck_routes: list[RouteNetNode], drone_route
     :type truck_time_fun:
     :param drone_time_fun:
     :type drone_time_fun:
-    :return:
-    :rtype:
+    :return: The Statistic of the combined route.
+    :rtype: RouteStatistic
     """
+    statistic = RouteStatistic(
+        route_truck_node_count=len(truck_routes),
+        route_drone_node_count=len(drone_routes),
+    )
+
     unvisited_truck_node_set: set[int] = set()
     drone_start_node_set: set[int] = set()
     drone_land_node_set: set[int] = set()
@@ -140,6 +161,8 @@ def calc_combined_time_consumption(truck_routes: list[RouteNetNode], drone_route
                    f"Drone departure. Route: {drone_return_route.start} -> {drone_return_route.end}")
         record_log(total_time + drone_path_time, 0,
                    f"Drone returned at node {drone_return_route.end}")
+        statistic.route_drone_distance += first_fly_route.distance + drone_return_route.distance
+        statistic.route_drone_travel_time += drone_path_time
 
     # Every turn, current_node and the route it starts is visited.
     is_last_route = False
@@ -149,17 +172,22 @@ def calc_combined_time_consumption(truck_routes: list[RouteNetNode], drone_route
 
         # deal with the distance
         period_truck_time += truck_time_fun(current_truck_route.distance)
+        statistic.route_truck_distance += current_truck_route.distance
 
         # deal with the end node and children
         # Drone lands
         if c_route_end_node in drone_land_node_set:
             wait_time = period_truck_time - period_drone_time
             total_time += max(period_drone_time, period_truck_time)
+            statistic.route_drone_travel_time += period_drone_time
+            statistic.route_truck_travel_time += period_truck_time
             record_log(total_time, 1, f"Truck and drone met at node {c_route_end_node}")
             if wait_time > 0:
                 record_log(total_time, 2, f"In this node: Drone waited {parse_secs_to_str(wait_time)} seconds.")
+                statistic.route_drone_waiting_time += wait_time
             else:
                 record_log(total_time, 2, f"In this node: Truck waited {parse_secs_to_str(-wait_time)} seconds.")
+                statistic.route_truck_waiting_time += -wait_time
             drone_land_node_set.discard(c_route_end_node)
             period_drone_time = 0.
             period_truck_time = 0.
@@ -168,6 +196,7 @@ def calc_combined_time_consumption(truck_routes: list[RouteNetNode], drone_route
         # Deal with truck distances before drone's taking off at the end of the route
         if not drone_on_the_way:
             total_time += period_truck_time
+            statistic.route_truck_travel_time += period_truck_time
             period_truck_time = 0.0
 
         # Deal with things after the current node.
@@ -193,6 +222,8 @@ def calc_combined_time_consumption(truck_routes: list[RouteNetNode], drone_route
                        f"Drone departure. Route: {drone_path.end} -> {drone_path_return.end}")
             record_log(total_time + period_drone_time, 0,
                        f"Drone returned at node {drone_path_return.end}")
+            statistic.route_drone_distance += drone_path.distance + drone_path_return.distance
+            statistic.route_drone_travel_time += period_drone_time
 
         # Truck goes.
         if drone_on_the_way:
@@ -203,6 +234,7 @@ def calc_combined_time_consumption(truck_routes: list[RouteNetNode], drone_route
                        f"-> {current_truck_route.children[Vehicle.TRUCK].end}")
         else:
             total_time += period_truck_time
+            statistic.route_truck_travel_time += period_truck_time
             period_truck_time = 0.0
             record_log(total_time + 0.1, 0, f"Truck arrived at node {current_truck_route.end}")
             if current_truck_route.end != start_station_node_id:
@@ -217,11 +249,13 @@ def calc_combined_time_consumption(truck_routes: list[RouteNetNode], drone_route
             is_last_route = True
 
     logs.add((total_time + 0.5, 0, f"* End of the simulation."))
-    for log in logs:
-        logger.info(log[2])
+    statistic.total_travel_time = total_time
+    if logger is not None:
+        for log in logs:
+            logger.info(log[2])
     if log_container is not None:
         log_container.extend([log[2] for log in logs])
-    return total_time
+    return statistic
 
 
 def split_truck_drone_routes(routes: list[RouteNetNode]) -> tuple[list[RouteNetNode], list[RouteNetNode]]:

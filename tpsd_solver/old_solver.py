@@ -6,7 +6,8 @@ from sortedcontainers import SortedList
 
 from .__util import logs
 from .__util.iterator import CombinedIterator, DroneTuplesIterator
-from .routes import calc_combined_time_consumption, split_truck_drone_routes, parse_list_to_route_net_nodes
+from .__util.timer import parse_secs_to_str
+from .routes import calc_combined_route, split_truck_drone_routes, parse_list_to_route_net_nodes
 from .speed import calc_truck_time, calc_drone_time
 from .steps import *
 from .tsp import calc_truck_tsp_route
@@ -19,7 +20,7 @@ class OldStep1(Step1TruckRoutes):
         num_min_truck_nodes = math.floor((len(self.nodes) - 1) / 2)
         self.logger.info(f"Calculating TSP routes for {num_nodes} nodes")
         tsp_path, tsp_time = calc_truck_tsp_route(self.distances)
-        self.logger.info(f"TSP time: {tsp_time}, TSP Path: {tsp_path}")
+        self.logger.info(f"TSP time: {parse_secs_to_str(tsp_time)}, TSP Path: {tsp_path}")
 
         sorted_truck_routes: SortedList[list[int]] = \
             SortedList(key=lambda truck_nodes: self.distances.calc_road_distance(truck_nodes))
@@ -60,7 +61,7 @@ class OldStep1(Step1TruckRoutes):
             # For every possible number of truck nodes N, calculate all possible truck routes.
             all_truck_routes: itertools.permutations = itertools.permutations(range(1, num_nodes),
                                                                               num_truck_nodes)
-            self.logger.info(f"Calculating truck routes for {num_truck_nodes} truck nodes")
+            print(f"Calculating truck routes for {num_truck_nodes} truck nodes", end="\r")
             pool = ThreadPool(pool_size)
             pool.map(filter_route, all_truck_routes)
             pool.close()
@@ -176,26 +177,30 @@ class OldStep3(Step3BestRoutes):
     def calculate(self) -> list[RouteNetNode]:
         _, tsp_distance = calc_truck_tsp_route(self.distances)
         upper_bound_time = calc_truck_time(tsp_distance)
-        self.logger.info(f"Calculating best route... Initial upper bound: {upper_bound_time}")
+        self.logger.info(f"Calculating best route... Initial upper bound: {parse_secs_to_str(upper_bound_time)}\n")
         best_routes: list[RouteNetNode] = []
         for routes in self.possible_combined_routes:
             truck_routes, drone_routes = split_truck_drone_routes(routes)
             # print(f"Truck routes: {[(route.start, route.end) for route in truck_routes]}")
             # print(f"Drone routes: {[(route.start, route.end) for route in drone_routes]}")
-            sys_time = calc_combined_time_consumption(
+            statistic = calc_combined_route(
                 truck_routes=truck_routes,
                 drone_routes=drone_routes,
                 truck_time_fun=calc_truck_time,
                 drone_time_fun=calc_drone_time,
             )
+
+            sys_time = statistic.total_travel_time
+
             truck_distance = self.distances.calc_road_distance([r.start for r in truck_routes])
             truck_time = calc_truck_time(truck_distance)
             if truck_time > upper_bound_time:
-                self.logger.info(f"Iteration stopped because {truck_time} is worse than {upper_bound_time}")
+                self.logger.info(f"Iteration stopped because {parse_secs_to_str(truck_time)} is worse "
+                                 f"than {parse_secs_to_str(upper_bound_time)}")
                 break
 
             if sys_time < upper_bound_time:
-                self.logger.info(f"Found better route: {sys_time}")
+                print(f"\x1b[1K\rFound better route: {parse_secs_to_str(sys_time)}", end="")
                 upper_bound_time = sys_time
                 best_routes = routes
 

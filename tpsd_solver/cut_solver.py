@@ -7,7 +7,7 @@ from sortedcontainers import SortedList
 from .__util import logs
 from .__util.iterator import CombinedIterator
 from .__util.timer import parse_secs_to_str
-from .routes import calc_combined_time_consumption, split_truck_drone_routes, parse_list_to_route_net_nodes
+from .routes import calc_combined_route, split_truck_drone_routes, parse_list_to_route_net_nodes
 from .speed import calc_truck_time, calc_drone_time
 from .steps import *
 from .tsp import calc_truck_tsp_route, calc_partial_truck_tsp_route
@@ -234,12 +234,14 @@ class CutSolverStep3(Step3BestRoutes):
                     f"\n -> {[r.start for r in truck_routes]}")
                 break
 
-            sys_time = calc_combined_time_consumption(
+            statistic = calc_combined_route(
                 truck_routes=truck_routes,
                 drone_routes=drone_routes,
                 truck_time_fun=calc_truck_time,
                 drone_time_fun=calc_drone_time,
             )
+
+            sys_time = statistic.total_travel_time
 
             if sys_time < upper_bound_time:
                 print(f"\x1b[1K\rFound better route: {parse_secs_to_str(sys_time)}", end="")
