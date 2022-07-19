@@ -69,7 +69,7 @@ class CutSolverStep1(Step1TruckRoutes):
         num_max_truck_nodes = min(num_max_truck_nodes, num_nodes + 1)
         self.logger.info(
             f"Cut factor is {truck_route_cut_factor} -> iterate truck node range "
-            f"from {num_min_truck_nodes} to {num_max_truck_nodes}")
+            f"from {num_min_truck_nodes} to {num_max_truck_nodes - 1}")
         # Minimal max_truck_nodes is num_min_truck_nodes + 1
         num_max_truck_nodes = max(num_max_truck_nodes, num_min_truck_nodes + 1)
         for num_truck_nodes in range(num_min_truck_nodes,

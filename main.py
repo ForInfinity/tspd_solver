@@ -112,7 +112,7 @@ def run_dataset(filename: str, old_solver=False, cut_factor=1.0) -> Optional[dic
                 solver = CutSolver(
                     nodes=nodes,
                     distance_matrix=dataset,
-                    logger=logger.getChild("old_solver"),
+                    logger=logger.getChild("cut_solver"),
                     configs={
                         'step1': {
                             "truck_cut_factor": cut_factor,
@@ -213,6 +213,7 @@ def main():
     for p in dataset_paths:
         logger.info("\n\n\n")
         logger.info(f"****** Start processing {p} ******")
+        logger = get_logger().getChild(p)
         if args.old_solver:
             statistic = run_dataset(p, old_solver=True)
             if statistic is not None:
